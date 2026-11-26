@@ -149,6 +149,11 @@ create policy admin on public.dettes for update using (public.mon_role() = 'admi
 
 -- Personne ne supprime un mouvement : aucune policy "delete" sur parties, depenses, caisses, dettes.
 
+-- Accès de l'API pour les comptes connectés (les règles ci-dessus filtrent ensuite)
+grant usage on schema public to authenticated;
+grant select, insert, update on all tables in schema public to authenticated;
+grant execute on function public.mon_role() to authenticated;
+
 -- Temps réel pour l'écran "En direct"
 alter publication supabase_realtime add table public.parties, public.depenses, public.caisses, public.postes;
 
