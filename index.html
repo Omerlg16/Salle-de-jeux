@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Salle de Jeux</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#17191f;--mute:#6b7280;--line:#e3e5ea;--acc:#2856d6;--ok:#14804a;--bad:#c62828;--warn:#b45309;--busy:#eef3ff}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--ink:#eceef2;--mute:#9aa1ad;--line:#2b2f38;--acc:#6f95ff;--ok:#4cc38a;--bad:#ff6b6b;--warn:#f0a44b;--busy:#1d2742}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;flex:1}
+.who{font-size:13px;color:var(--mute)}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+nav button{white-space:nowrap}
+main{padding:16px;max-width:960px;margin:0 auto}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.dang{color:var(--bad);border-color:var(--bad)}
+button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:disabled{opacity:.45;cursor:default}
+input,select{font:inherit;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px}
+.kpi .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:13px;color:var(--mute)}
+.poste{border-radius:14px}
+.poste.busy{background:var(--busy);border-color:var(--acc)}
+.poste.panne{opacity:.55}
+.poste h3{margin:0 0 4px;font-size:16px}
+.timer{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;margin:6px 0}
+.late{color:var(--bad)}
+.muted{color:var(--mute);font-size:13px}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:500;font-size:13px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1}
+.scroll{overflow-x:auto}
+.forfaits{display:grid;gap:8px;margin-top:8px}
+.forfaits button{text-align:left;display:flex;justify-content:space-between}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);width:min(440px,92vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.bar{height:8px;border-radius:4px;background:var(--acc)}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.login{max-width:360px;margin:40px auto}
+.sync{font-size:12px}
+h2{font-size:16px;margin:4px 0 12px}
+</style>
+</head>
+<body>
+<header><h1>🎮 Salle de Jeux</h1><span class="sync" id="net"></span><span class="who" id="who"></span></header>
+<nav id="nav" hidden></nav>
+<main id="app"></main>
+<dialog id="dlg"></dialog>
+
+<script>
+/* ===== Données (stockage local, fonctionne hors ligne) ===== */
+const KEY='sdj-v1';
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const DEFAULT={
+  salles:[{id:'s1',nom:'Salle 1'}],
+  users:[
+    {id:'u0',nom:'Omer',role:'admin',pin:'0000'},
+    {id:'u1',nom:'Patron A',role:'patron',pin:'1111'},
+    {id:'u2',nom:'Patron B',role:'patron',pin:'1111'},
+    {id:'u3',nom:'Patron C',role:'patron',pin:'1111'},
+    {id:'u4',nom:'Patron D',role:'patron',pin:'1111'},
+    {id:'u5',nom:'Gérant',role:'gerant',pin:'2222'}],
+  postes:[
+    {id:'p1',salle:'s1',nom:'PS4 n°1',console:'PS4',etat:'ok'},
+    {id:'p2',salle:'s1',nom:'PS4 n°2',console:'PS4',etat:'ok'},
+    {id:'p3',salle:'s1',nom:'PS3 n°1',console:'PS3',etat:'ok'},
+    {id:'p4',salle:'s1',nom:'PS3 n°2',console:'PS3',etat:'panne'}],
+  forfaits:[
+    {id:'f1',console:'PS4',jeu:'Foot (FC)',label:'1 match',minutes:3,prix:500},
+    {id:'f2',console:'PS4',jeu:'Foot (FC)',label:'2 matchs',minutes:6,prix:1000},
+    {id:'f3',console:'PS4',jeu:'Foot (FC)',label:'3 matchs',minutes:9,prix:1500},
+    {id:'f4',console:'PS4',jeu:'GTA 5',label:'20 minutes',minutes:20,prix:1000},
+    {id:'f5',console:'PS4',jeu:'GTA 5',label:'1 heure',minutes:60,prix:3000},
+    {id:'f6',console:'PS3',jeu:'Foot (PES)',label:'2 matchs',minutes:16,prix:500},
+    {id:'f7',console:'PS3',jeu:'Foot (PES)',label:'4 matchs',minutes:32,prix:1000},
+    {id:'f8',console:'PS3',jeu:'GTA 5',label:'15 minutes',minutes:15,prix:500},
+    {id:'f9',console:'PS3',jeu:'GTA 5',label:'30 minutes',minutes:30,prix:1000}],
+  charges:[
+    {id:'c1',libelle:'Loyer',montant:90,devise:'USD'},
+    {id:'c2',libelle:'Électricité',montant:7000,devise:'FC'}],
+  tauxUSD:2800,
+  parties:[],depenses:[],caisses:[],dettes:[],journal:[]
+};
+let db=load();
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d)return d}catch(e){}return structuredClone(DEFAULT)}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alertBox('Stockage plein ou bloqué.')}}
+function log(action,detail){db.journal.push({id:uid(),t:Date.now(),par:me.nom,action,detail})}
+
+/* ===== Outils ===== */
+const fc=n=>Math.round(n).toLocaleString('fr-FR')+' FC';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const hm=t=>new Date(t).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+const dfr=t=>new Date(t).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+const toFC=(m,dev)=>dev==='USD'?m*db.tauxUSD:m;
+const $=s=>document.querySelector(s);
+const forfait=id=>db.forfaits.find(f=>f.id===id);
+const poste=id=>db.postes.find(p=>p.id===id);
+const valides=()=>db.parties.filter(p=>!p.annulee);
+function mmss(ms){const neg=ms<0;ms=Math.abs(ms);const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000);return (neg?'+':'')+m+':'+String(s).padStart(2,'0')}
+
+/* ===== Session ===== */
+let me=null,view=null;
+function alertBox(msg){const d=$('#dlg');d.innerHTML=`<p>${esc(msg)}</p><div class="row"><button class="pri" onclick="dlg.close()">OK</button></div>`;d.showModal()}
+function renderLogin(){
+  $('#nav').hidden=true;$('#who').textContent='';
+  $('#app').innerHTML=`<div class="card login"><h2>Connexion</h2>
+  <label>Compte</label><select id="lu">${db.users.map(u=>`<option value="${u.id}">${esc(u.nom)} · ${roleName(u.role)}</option>`).join('')}</select>
+  <label>Code PIN</label><input id="lp" type="password" inputmode="numeric" maxlength="6" placeholder="••••">
+  <div style="margin-top:14px"><button class="pri" style="width:100%" onclick="doLogin()">Entrer</button></div>
+  <p class="muted">Démo : Omer 0000 · Patrons 1111 · Gérant 2222</p></div>`;
+}
+function roleName(r){return {admin:'Super utilisateur',patron:'Patron',gerant:'Gérant'}[r]}
+function doLogin(){const u=db.users.find(x=>x.id===$('#lu').value);if(u&&u.pin===$('#lp').value){me=u;sessionStorage.setItem('me',u.id);start()}else alertBox('Code incorrect.')}
+function logout(){me=null;sessionStorage.removeItem('me');renderLogin()}
+const VIEWS={
+  gerant:[['postes','Postes'],['depense','Dépense'],['caisse','Caisse du soir'],['jour','Mes saisies']],
+  patron:[['direct','En direct'],['bilans','Bilans'],['caisses','Contrôle caisse'],['dettes','Dettes'],['depenses','Dépenses']],
+  admin:[['direct','En direct'],['postes','Postes'],['bilans','Bilans'],['caisses','Contrôle caisse'],['dettes','Dettes'],['depenses','Dépenses'],['reglages','Réglages']]
+};
+function start(){
+  $('#who').innerHTML=`${esc(me.nom)} · <a href="#" onclick="logout();return false" style="color:inherit">sortir</a>`;
+  const v=VIEWS[me.role];view=view&&v.some(x=>x[0]===view)?view:v[0][0];
+  $('#nav').hidden=false;render();
+}
+function go(v){view=v;render()}
+function render(){
+  if(!me)return renderLogin();
+  $('#nav').innerHTML=VIEWS[me.role].map(([k,l])=>`<button class="${k===view?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+  $('#app').innerHTML=(R[view]||(()=>''))();
+}
+
+/* ===== Écrans ===== */
+const R={};
+function actives(){return db.parties.filter(p=>!p.fin&&!p.annulee)}
+
+R.postes=()=>{
+  const now=Date.now();
+  return `<div class="grid">${db.postes.map(p=>{
+    const a=actives().find(x=>x.posteId===p.id);
+    if(p.etat==='panne')return `<div class="card poste panne"><h3>${esc(p.nom)}</h3><span class="tag">En panne</span></div>`;
+    if(a){const f=forfait(a.forfaitId);const reste=a.debut+f.minutes*60000-now;
+      return `<div class="card poste busy"><h3>${esc(p.nom)}</h3><div class="muted">${esc(f.jeu)} · ${esc(f.label)} · ${fc(a.prix)}</div>
+      <div class="timer ${reste<0?'late':''}" data-end="${a.debut+f.minutes*60000}">${mmss(reste)}</div>
+      <div class="muted">Début ${hm(a.debut)}${reste<0?' · temps dépassé':''}</div>
+      <div class="row" style="margin-top:8px"><button onclick="rajout('${a.id}')">+ Rajouter</button><button class="pri" onclick="terminer('${a.id}')">Terminer</button></div></div>`}
+    return `<div class="card poste"><h3>${esc(p.nom)}</h3><div class="muted">Libre</div>
+    <div class="forfaits">${db.forfaits.filter(f=>f.console===p.console).map(f=>`<button onclick="demarrer('${p.id}','${f.id}')"><span>${esc(f.jeu)} · ${esc(f.label)}</span><b>${fc(f.prix)}</b></button>`).join('')}</div></div>`;
+  }).join('')}</div>`;
+};
+function demarrer(pid,fid){
+  const f=forfait(fid),p=poste(pid);const d=$('#dlg');
+  d.innerHTML=`<h2>Démarrer ${esc(p.nom)}</h2><p>${esc(f.jeu)} · ${esc(f.label)}<br><b>Encaisser ${fc(f.prix)}</b></p>
+  <div class="row"><button onclick="dlg.close()">Annuler</button><button class="pri" id="ok">Argent reçu, démarrer</button></div>`;
+  d.showModal();$('#ok').onclick=()=>{db.parties.push({id:uid(),posteId:pid,forfaitId:fid,prix:f.prix,debut:Date.now(),fin:null,par:me.nom,sync:false});log('partie',`${p.nom} ${f.jeu} ${f.label}`);save();d.close();render()};
+}
+function terminer(id){const a=db.parties.find(x=>x.id===id);a.fin=Date.now();save();render()}
+function rajout(id){
+  const a=db.parties.find(x=>x.id===id);a.fin=Date.now();
+  const p=poste(a.posteId);save();
+  // relance une nouvelle partie sur le même poste, le gérant choisit le forfait
+  const d=$('#dlg');d.innerHTML=`<h2>Rajout sur ${esc(p.nom)}</h2><div class="forfaits">${db.forfaits.filter(f=>f.console===p.console).map(f=>`<button onclick="dlg.close();startDirect('${p.id}','${f.id}')"><span>${esc(f.jeu)} · ${esc(f.label)}</span><b>${fc(f.prix)}</b></button>`).join('')}</div><div class="row" style="margin-top:10px"><button onclick="dlg.close();render()">Fermer</button></div>`;d.showModal();
+}
+function startDirect(pid,fid){const f=forfait(fid);db.parties.push({id:uid(),posteId:pid,forfaitId:fid,prix:f.prix,debut:Date.now(),fin:null,par:me.nom});save();render()}
+
+R.depense=()=>`<div class="card"><h2>Nouvelle dépense</h2>
+  <label>Pour quoi ?</label><input id="dl" placeholder="Ex. manette PS3, crédit, nettoyage">
+  <div class="row"><div><label>Montant</label><input id="dm" type="number" inputmode="numeric" min="0"></div>
+  <div><label>Devise</label><select id="dd"><option>FC</option><option>USD</option></select></div></div>
+  <label>Payée avec l'argent de la caisse ?</label><select id="dc"><option value="1">Oui, sortie de la caisse</option><option value="0">Non, payée par un propriétaire</option></select>
+  <div style="margin-top:14px"><button class="pri" onclick="addDep()">Enregistrer</button></div></div>`;
+function addDep(){const l=$('#dl').value.trim(),m=+$('#dm').value;if(!l||!(m>0))return alertBox('Indiquez le motif et le montant.');
+  db.depenses.push({id:uid(),t:Date.now(),libelle:l,montant:m,devise:$('#dd').value,caisse:$('#dc').value==='1',par:me.nom});log('dépense',l+' '+m);save();alertBox('Dépense enregistrée.');render()}
+
+function attenduJour(k){
+  const rec=valides().filter(p=>dayKey(p.debut)===k).reduce((s,p)=>s+p.prix,0);
+  const dep=db.depenses.filter(d=>d.caisse&&!d.annulee&&dayKey(d.t)===k).reduce((s,d)=>s+toFC(d.montant,d.devise),0);
+  const emp=db.dettes.filter(d=>d.caisse&&dayKey(d.t)===k).reduce((s,d)=>s+(d.type==='emprunt'?-d.montant:d.montant),0);
+  return {rec,dep,emp,att:rec-dep+emp};
+}
+R.caisse=()=>{const k=dayKey(Date.now());const deja=db.caisses.find(c=>c.jour===k);
+  if(deja)return `<div class="card"><h2>Caisse du ${dfr(Date.now())}</h2><p>Déclarée à ${hm(deja.t)} : <b>${fc(deja.declare)}</b>.</p><p class="muted">Une seule déclaration par jour. Pour corriger, demandez à Omer.</p></div>`;
+  return `<div class="card"><h2>Caisse du soir</h2><p class="muted">Comptez l'argent présent dans la caisse et saisissez le total. Le montant attendu n'est pas affiché ici.</p>
+  ${actives().length?`<p class="neg">${actives().length} partie(s) encore en cours. Terminez-les d'abord.</p>`:''}
+  <label>Argent compté (FC)</label><input id="cm" type="number" inputmode="numeric" min="0">
+  <div style="margin-top:14px"><button class="pri" ${actives().length?'disabled':''} onclick="declCaisse()">Déclarer la caisse</button></div></div>`};
+function declCaisse(){const m=+$('#cm').value;if(!($('#cm').value!==''&&m>=0))return alertBox('Saisissez le montant compté.');const k=dayKey(Date.now());
+  db.caisses.push({id:uid(),jour:k,t:Date.now(),declare:m,attendu:attenduJour(k).att,par:me.nom});log('caisse',fc(m));save();render()}
+
+R.jour=()=>{const k=dayKey(Date.now());const ps=db.parties.filter(p=>dayKey(p.debut)===k).reverse();
+  return `<div class="card"><h2>Parties d'aujourd'hui (${ps.length})</h2><div class="scroll"><table><tr><th>Heure</th><th>Poste</th><th>Forfait</th><th class="n">Prix</th></tr>
+  ${ps.map(p=>{const f=forfait(p.forfaitId);return `<tr><td>${hm(p.debut)}</td><td>${esc(poste(p.posteId)?.nom)}</td><td>${esc(f?.jeu)} · ${esc(f?.label)}${p.annulee?' <span class="tag">annulée</span>':''}${p.demandeAnnul&&!p.annulee?' <span class="tag">annulation demandée</span>':''}</td><td class="n">${fc(p.prix)}</td></tr>`}).join('')}</table></div>
+  <p class="muted">Erreur de saisie ? <button onclick="demAnnul()">Demander une annulation</button></p></div>`};
+function demAnnul(){const k=dayKey(Date.now());const ps=db.parties.filter(p=>dayKey(p.debut)===k&&!p.annulee).reverse();const d=$('#dlg');
+  d.innerHTML=`<h2>Demander une annulation</h2><label>Partie</label><select id="ap">${ps.map(p=>`<option value="${p.id}">${hm(p.debut)} · ${esc(poste(p.posteId)?.nom)} · ${fc(p.prix)}</option>`).join('')}</select><label>Motif</label><input id="am"><div class="row" style="margin-top:12px"><button onclick="dlg.close()">Fermer</button><button class="pri" id="ok">Envoyer</button></div>`;
+  d.showModal();$('#ok').onclick=()=>{const p=db.parties.find(x=>x.id===$('#ap').value);if(!p)return;p.demandeAnnul=$('#am').value||'sans motif';save();d.close();render()}}
+
+R.direct=()=>{const k=dayKey(Date.now());const j=attenduJour(k);const now=Date.now();
+  const occ=actives();const dem=db.parties.filter(p=>p.demandeAnnul&&!p.annulee&&!p.refus);
+  const ps=valides().filter(p=>dayKey(p.debut)===k);
+  return `<div class="kpis">
+   <div class="card kpi"><div class="l">Recette du jour</div><div class="v">${fc(j.rec)}</div></div>
+   <div class="card kpi"><div class="l">Parties du jour</div><div class="v">${ps.length}</div></div>
+   <div class="card kpi"><div class="l">Postes occupés</div><div class="v">${occ.length} / ${db.postes.filter(p=>p.etat==='ok').length}</div></div>
+   <div class="card kpi"><div class="l">Caisse attendue</div><div class="v">${fc(j.att)}</div></div></div>
+  ${dem.length&&me.role==='admin'?`<div class="card"><h2>Demandes d'annulation</h2>${dem.map(p=>`<div class="row" style="margin-bottom:6px"><span>${dfr(p.debut)} ${hm(p.debut)} · ${esc(poste(p.posteId)?.nom)} · ${fc(p.prix)} · « ${esc(p.demandeAnnul)} »</span><button onclick="annul('${p.id}',true)">Accepter</button><button onclick="annul('${p.id}',false)">Refuser</button></div>`).join('')}</div>`:''}
+  <div class="card"><h2>Salle en direct</h2><table>${db.postes.map(p=>{const a=occ.find(x=>x.posteId===p.id);const f=a&&forfait(a.forfaitId);
+    return `<tr><td>${esc(p.nom)}</td><td>${p.etat==='panne'?'<span class="tag">En panne</span>':a?`${esc(f.jeu)} · ${esc(f.label)} depuis ${hm(a.debut)}`:'<span class="muted">Libre</span>'}</td><td class="n">${a?`<span class="timer-s ${a.debut+f.minutes*60000<now?'late':''}" data-end="${a.debut+f.minutes*60000}">${mmss(a.debut+f.minutes*60000-now)}</span>`:''}</td></tr>`}).join('')}</table></div>
+  <div class="card"><h2>Dernières parties</h2><div class="scroll"><table><tr><th>Heure</th><th>Poste</th><th>Forfait</th><th>Saisie par</th><th class="n">Prix</th></tr>
+  ${db.parties.filter(p=>dayKey(p.debut)===k).slice(-15).reverse().map(p=>{const f=forfait(p.forfaitId);return `<tr><td>${hm(p.debut)}</td><td>${esc(poste(p.posteId)?.nom)}</td><td>${esc(f?.jeu)} · ${esc(f?.label)}${p.annulee?' <span class="tag">annulée</span>':''}</td><td>${esc(p.par)}</td><td class="n">${fc(p.prix)}</td></tr>`}).join('')||'<tr><td colspan="5" class="muted">Aucune partie aujourd\'hui.</td></tr>'}</table></div></div>`};
+function annul(id,ok){const p=db.parties.find(x=>x.id===id);if(ok){p.annulee=true;log('annulation',p.demandeAnnul)}else p.refus=true;save();render()}
+
+/* Bilans */
+let periode='mois';
+function bornes(per){const n=new Date();let a,b;
+  if(per==='semaine'){a=new Date(n.getFullYear(),n.getMonth(),n.getDate()-((n.getDay()+6)%7));b=new Date(a);b.setDate(a.getDate()+7)}
+  else if(per==='mois'){a=new Date(n.getFullYear(),n.getMonth(),1);b=new Date(n.getFullYear(),n.getMonth()+1,1)}
+  else if(per==='trimestre'){const q=Math.floor(n.getMonth()/3)*3;a=new Date(n.getFullYear(),q,1);b=new Date(n.getFullYear(),q+3,1)}
+  else {a=new Date(n.getFullYear(),0,1);b=new Date(n.getFullYear()+1,0,1)}
+  return [a.getTime(),b.getTime()]}
+R.bilans=()=>{const [a,b]=bornes(periode);const ps=valides().filter(p=>p.debut>=a&&p.debut<b);
+  const rec=ps.reduce((s,p)=>s+p.prix,0);
+  const dep=db.depenses.filter(d=>!d.annulee&&d.t>=a&&d.t<b).reduce((s,d)=>s+toFC(d.montant,d.devise),0);
+  const mois={semaine:7/30,mois:1,trimestre:3,annee:12}[periode];
+  const fixes=db.charges.reduce((s,c)=>s+toFC(c.montant,c.devise),0)*mois;
+  const res=rec-dep-fixes;
+  const par={};ps.forEach(p=>{const f=forfait(p.forfaitId);const k=(f?.console||'?')+' · '+(f?.jeu||'?');par[k]=(par[k]||0)+p.prix});
+  const max=Math.max(1,...Object.values(par));
+  const jours={};ps.forEach(p=>{const k=dayKey(p.debut);jours[k]=(jours[k]||0)+p.prix});
+  return `<div class="row" style="margin-bottom:12px">${['semaine','mois','trimestre','annee'].map(k=>`<button class="${k===periode?'on':''}" onclick="periode='${k}';render()">${{semaine:'Semaine',mois:'Mois',trimestre:'Trimestre',annee:'Année'}[k]}</button>`).join('')}</div>
+  <p class="muted">Du ${new Date(a).toLocaleDateString('fr-FR')} au ${new Date(b-1).toLocaleDateString('fr-FR')}</p>
+  <div class="kpis">
+   <div class="card kpi"><div class="l">Recettes</div><div class="v">${fc(rec)}</div></div>
+   <div class="card kpi"><div class="l">Dépenses saisies</div><div class="v">${fc(dep)}</div></div>
+   <div class="card kpi"><div class="l">Charges fixes</div><div class="v">${fc(fixes)}</div></div>
+   <div class="card kpi"><div class="l">${res>=0?'Gain':'Perte'}</div><div class="v ${res>=0?'pos':'neg'}">${fc(res)}</div></div></div>
+  <div class="card"><h2>Recettes par console et jeu</h2>${Object.entries(par).sort((x,y)=>y[1]-x[1]).map(([k,v])=>`<div style="margin-bottom:8px"><div class="row"><span>${esc(k)}</span><span style="text-align:right">${fc(v)}</span></div><div class="bar" style="width:${v/max*100}%"></div></div>`).join('')||'<p class="muted">Aucune partie sur la période.</p>'}</div>
+  <div class="card"><h2>Recettes par jour</h2><div class="scroll"><table><tr><th>Jour</th><th class="n">Recette</th></tr>${Object.entries(jours).sort().reverse().map(([k,v])=>`<tr><td>${new Date(k).toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'short'})}</td><td class="n">${fc(v)}</td></tr>`).join('')}</table></div>
+  <p class="muted">Charges fixes : loyer ${db.charges[0]?.montant} $ au taux de ${db.tauxUSD} FC, électricité ${fc(db.charges[1]?.montant||0)} par mois, ramenées à la période.</p></div>`};
+
+R.caisses=()=>`<div class="card"><h2>Contrôle de caisse</h2><p class="muted">Écart = argent déclaré par le gérant moins argent attendu d'après les parties, dépenses et emprunts du jour.</p><div class="scroll"><table><tr><th>Jour</th><th class="n">Attendu</th><th class="n">Déclaré</th><th class="n">Écart</th></tr>
+  ${db.caisses.slice().reverse().map(c=>{const att=attenduJour(c.jour).att;const e=c.declare-att;return `<tr><td>${new Date(c.jour).toLocaleDateString('fr-FR')}</td><td class="n">${fc(att)}</td><td class="n">${fc(c.declare)}</td><td class="n ${e<0?'neg':e>0?'pos':''}">${e>0?'+':''}${fc(e)}</td></tr>`}).join('')||'<tr><td colspan="4" class="muted">Aucune caisse déclarée.</td></tr>'}</table></div>
+  <p class="muted">Total des écarts : <b>${fc(db.caisses.reduce((s,c)=>s+c.declare-attenduJour(c.jour).att,0))}</b></p></div>`;
+
+R.dettes=()=>{const prop=db.users.filter(u=>u.role!=='gerant');
+  const solde=n=>db.dettes.filter(d=>d.proprio===n).reduce((s,d)=>s+(d.type==='remboursement'?-d.montant:d.montant),0);
+  return `<div class="card"><h2>Dettes des propriétaires</h2><table><tr><th>Propriétaire</th><th class="n">Reste dû</th></tr>${prop.map(u=>`<tr><td>${esc(u.nom)}</td><td class="n ${solde(u.nom)>0?'neg':''}">${fc(solde(u.nom))}</td></tr>`).join('')}</table>
+  <p class="muted">Total dû à la salle : <b>${fc(prop.reduce((s,u)=>s+solde(u.nom),0))}</b></p></div>
+  <div class="card"><h2>Nouveau mouvement</h2>
+   <label>Propriétaire</label><select id="xp">${prop.map(u=>`<option ${u.id===me.id?'selected':''}>${esc(u.nom)}</option>`).join('')}</select>
+   <div class="row"><div><label>Type</label><select id="xt"><option value="emprunt">Emprunt</option><option value="remboursement">Remboursement</option><option value="depart">Dette de départ</option></select></div>
+   <div><label>Montant (FC)</label><input id="xm" type="number" min="0" inputmode="numeric"></div></div>
+   <label>Argent pris ou rendu dans la caisse aujourd'hui ?</label><select id="xc"><option value="1">Oui</option><option value="0">Non</option></select>
+   <div style="margin-top:14px"><button class="pri" onclick="addDette()">Enregistrer</button></div></div>
+  <div class="card"><h2>Historique</h2><div class="scroll"><table><tr><th>Date</th><th>Propriétaire</th><th>Mouvement</th><th class="n">Montant</th></tr>${db.dettes.slice().reverse().map(d=>`<tr><td>${dfr(d.t)}</td><td>${esc(d.proprio)}</td><td>${{emprunt:'Emprunt',remboursement:'Remboursement',depart:'Dette de départ'}[d.type]}</td><td class="n">${fc(d.montant)}</td></tr>`).join('')}</table></div></div>`};
+function addDette(){const m=+$('#xm').value;if(!(m>0))return alertBox('Saisissez un montant.');const t=$('#xt').value;
+  db.dettes.push({id:uid(),t:Date.now(),proprio:$('#xp').value,type:t,montant:m,caisse:t!=='depart'&&$('#xc').value==='1',par:me.nom});log('dette',t+' '+m);save();render()}
+
+R.depenses=()=>R.depense()+`<div class="card"><h2>Toutes les dépenses</h2><div class="scroll"><table><tr><th>Date</th><th>Motif</th><th>Par</th><th class="n">Montant</th></tr>${db.depenses.slice().reverse().map(d=>`<tr><td>${dfr(d.t)}</td><td>${esc(d.libelle)}${d.caisse?' <span class="tag">caisse</span>':''}</td><td>${esc(d.par)}</td><td class="n">${d.devise==='USD'?d.montant+' $':fc(d.montant)}</td></tr>`).join('')}</table></div></div>`;
+
+R.reglages=()=>`<div class="card"><h2>Tarifs</h2><div class="scroll"><table><tr><th>Console</th><th>Jeu</th><th>Forfait</th><th class="n">Minutes</th><th class="n">Prix FC</th><th></th></tr>
+ ${db.forfaits.map(f=>`<tr><td>${f.console}</td><td>${esc(f.jeu)}</td><td>${esc(f.label)}</td><td class="n"><input style="width:70px" type="number" value="${f.minutes}" onchange="setF('${f.id}','minutes',this.value)"></td><td class="n"><input style="width:90px" type="number" value="${f.prix}" onchange="setF('${f.id}','prix',this.value)"></td><td><button class="dang" onclick="delF('${f.id}')">✕</button></td></tr>`).join('')}</table></div>
+ <div class="row" style="margin-top:10px"><select id="nc"><option>PS4</option><option>PS3</option></select><input id="nj" placeholder="Jeu"><input id="nl" placeholder="Forfait"><input id="nmi" type="number" placeholder="Min"><input id="np" type="number" placeholder="Prix"><button onclick="addF()">Ajouter</button></div></div>
+ <div class="card"><h2>Postes</h2>${db.postes.map(p=>`<div class="row" style="margin-bottom:6px"><span>${esc(p.nom)}</span><select onchange="setP('${p.id}',this.value)"><option value="ok" ${p.etat==='ok'?'selected':''}>Marche</option><option value="panne" ${p.etat==='panne'?'selected':''}>En panne</option></select></div>`).join('')}</div>
+ <div class="card"><h2>Charges et taux</h2><label>Taux : 1 $ = ? FC</label><input type="number" value="${db.tauxUSD}" onchange="db.tauxUSD=+this.value;save()">
+ ${db.charges.map(c=>`<label>${esc(c.libelle)} par mois (${c.devise})</label><input type="number" value="${c.montant}" onchange="setC('${c.id}',this.value)">`).join('')}</div>
+ <div class="card"><h2>Comptes</h2>${db.users.map(u=>`<div class="row" style="margin-bottom:6px"><input value="${esc(u.nom)}" onchange="setU('${u.id}','nom',this.value)"><span class="tag">${roleName(u.role)}</span><input value="${esc(u.pin)}" maxlength="6" onchange="setU('${u.id}','pin',this.value)"></div>`).join('')}</div>
+ <div class="card"><h2>Sauvegarde</h2><div class="row"><button onclick="exporter()">Télécharger les données</button><button class="dang" onclick="reinit()">Tout effacer</button></div></div>`;
+function setF(id,k,v){forfait(id)[k]=+v;log('tarif',id+' '+k+'='+v);save()}
+function delF(id){db.forfaits=db.forfaits.filter(f=>f.id!==id);save();render()}
+function addF(){const f={id:uid(),console:$('#nc').value,jeu:$('#nj').value,label:$('#nl').value,minutes:+$('#nmi').value,prix:+$('#np').value};if(!f.jeu||!f.label||!f.prix)return alertBox('Remplissez le jeu, le forfait et le prix.');db.forfaits.push(f);save();render()}
+function setP(id,v){poste(id).etat=v;save()}
+function setC(id,v){db.charges.find(c=>c.id===id).montant=+v;save()}
+function setU(id,k,v){db.users.find(u=>u.id===id)[k]=v;save()}
+function exporter(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,1)],{type:'application/json'}));a.download='salle-de-jeux-'+dayKey(Date.now())+'.json';a.click()}
+function reinit(){const d=$('#dlg');d.innerHTML=`<p>Effacer toutes les données de cet appareil ?</p><div class="row"><button onclick="dlg.close()">Non</button><button class="dang" id="ok">Oui, effacer</button></div>`;d.showModal();$('#ok').onclick=()=>{db=structuredClone(DEFAULT);save();d.close();render()}}
+
+/* Minuteurs en direct */
+setInterval(()=>{const now=Date.now();document.querySelectorAll('[data-end]').forEach(el=>{const r=+el.dataset.end-now;el.textContent=mmss(r);el.classList.toggle('late',r<0)})},1000);
+function netState(){$('#net').textContent=navigator.onLine?'● en ligne':'○ hors ligne';$('#net').style.color=navigator.onLine?'var(--ok)':'var(--warn)'}
+addEventListener('online',netState);addEventListener('offline',netState);netState();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+const saved=sessionStorage.getItem('me');me=saved?db.users.find(u=>u.id===saved):null;me?start():renderLogin();
+</script>
+</body>
+</html>
